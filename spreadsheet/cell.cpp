@@ -12,8 +12,13 @@ Cell::Cell(Sheet& sheet) : impl_(std::make_unique<EmptyImpl>()),
 Cell::~Cell() = default;
 
 void Cell::Set(std::string text) {
+
+    if (text == this->GetText()) {
+        return;
+    }
+
     std::unique_ptr<Impl> impl_tmp;
-        if (text.size() > 1 && text[0] == '=') {
+        if (text.size() > 1 && text[0] == FORMULA_SIGN) {
              impl_tmp = std::make_unique<FormulaImpl>(std::move(text), sheet_);
              const auto tmp_ref_cells_in = impl_tmp->GetReferencedCells();
              if (!tmp_ref_cells_in.empty()) {
@@ -33,8 +38,7 @@ void Cell::Set(std::string text) {
 }
 
 void Cell::Clear() {
-        impl_.reset();
-        impl_ = std::make_unique<EmptyImpl>(EmptyImpl());
+    this->Set("");
 }
 
 Cell::Value Cell::GetValue() const {
@@ -67,6 +71,10 @@ void Cell::InvalidateCellsCache() const{
     }
 }
 
+bool Cell::IsReferenced() const {
+    return !dependent_cells_.empty();
+}
+
 std::string Cell::Impl::GetText() const {
     return "";
 }
@@ -85,7 +93,7 @@ void Cell::Impl::InvalidateCache() {}
 
 Cell::TextImpl::TextImpl(std::string text) : text_(text) {};
 CellInterface::Value Cell::TextImpl::GetValue() const {
-    if (text_[0] == '\'') {
+    if (text_[0] == ESCAPE_SIGN) {
         return text_.substr(1, text_.length() - 1);
     }
     else {
@@ -108,7 +116,7 @@ CellInterface::Value Cell::FormulaImpl::GetValue() const {
 }
 
 std::string Cell::FormulaImpl::GetText() const {
-    std::string str = "=" + cell_formula_->GetExpression();
+    std::string str = FORMULA_SIGN + cell_formula_->GetExpression();
     return str;
 }
 

@@ -10,9 +10,7 @@
 using namespace std::literals;
 
 void Sheet::SetCell(Position pos, std::string text) {
-    if (!pos.IsValid()) {
-        throw InvalidPositionException("invalid cell address");
-    }
+    CheckCellPosition(pos);
 
     if (pos.row >= static_cast<int>(table_.size())) {
         table_.resize(pos.row + 1);
@@ -29,15 +27,10 @@ void Sheet::SetCell(Position pos, std::string text) {
 }
 
 const CellInterface* Sheet::GetCell(Position pos) const {
-    if (!pos.IsValid()) {
-        throw InvalidPositionException("invalid cell address");
-    }
+    CheckCellPosition(pos);
 
-    if (pos.row < static_cast<int>(table_.size()) && pos.col < static_cast<int>(table_[pos.row].size())) {
-        if (table_[pos.row][pos.col] == nullptr
-            || table_[pos.row][pos.col]->GetText() == "") {
-            return nullptr;
-        }
+    if (pos.row < static_cast<int>(table_.size()) 
+        && pos.col < static_cast<int>(table_[pos.row].size())) {
         return table_[pos.row][pos.col].get();
     }
     else {
@@ -47,14 +40,10 @@ const CellInterface* Sheet::GetCell(Position pos) const {
 
 CellInterface* Sheet::GetCell(Position pos) {
 
-    if (!pos.IsValid()) {
-        throw InvalidPositionException("invalid cell address");
-    }
+    CheckCellPosition(pos);
 
-    if (pos.row < static_cast<int>(table_.size()) && pos.col < static_cast<int>(table_[pos.row].size())) {
-        if (table_[pos.row][pos.col].get()->GetText().empty()) {
-            table_[pos.row][pos.col] = std::make_unique<Cell>(*this);
-        }
+    if (pos.row < static_cast<int>(table_.size()) 
+        && pos.col < static_cast<int>(table_[pos.row].size())) {
         return table_[pos.row][pos.col].get();
     }
     else {
@@ -63,11 +52,10 @@ CellInterface* Sheet::GetCell(Position pos) {
 }
 
 Cell* Sheet::GetCellPtr(Position pos) {
-    if (!pos.IsValid()) {
-        throw InvalidPositionException("invalid cell address");
-    }
+    CheckCellPosition(pos);
 
-    if (pos.row < static_cast<int>(table_.size()) && pos.col < static_cast<int>(table_[pos.row].size())) {
+    if (pos.row < static_cast<int>(table_.size()) 
+        && pos.col < static_cast<int>(table_[pos.row].size())) {
         return table_[pos.row][pos.col].get();
     }
     else {
@@ -76,12 +64,15 @@ Cell* Sheet::GetCellPtr(Position pos) {
 }
 
 void Sheet::ClearCell(Position pos) {
-    if (!pos.IsValid()) {
-        throw InvalidPositionException("invalid cell address");
-    }
+    CheckCellPosition(pos);
 
-    if (pos.row < static_cast<int>(table_.size()) && pos.col < static_cast<int>(table_[pos.row].size())) {
+    if (pos.row < static_cast<int>(table_.size()) 
+        && pos.col < static_cast<int>(table_[pos.row].size())) {
         table_[pos.row][pos.col]->Clear();
+
+        if (!table_[pos.row][pos.col]->IsReferenced()) {
+            table_[pos.row][pos.col].reset();
+        }
     }
 }
 
@@ -89,44 +80,43 @@ Size Sheet::GetPrintableSize() const {
 
     int col_max = 0;
     int row_cnt = 0;
-    for (int i = 0; i < static_cast<int>(table_.size()); ++i) {
+    for (int row = 0; row < static_cast<int>(table_.size()); ++row) {
         int pos_col = 0;
-        for (int j = 0; j < static_cast<int>(table_[i].size()); ++j) {
-            if (GetCell({i,j}) != nullptr) {
-                pos_col = j + 1;
+        for (int col = 0; col < static_cast<int>(table_[row].size()); ++col) {
+            if (GetCell({row, col}) != nullptr) {
+                pos_col = col + 1;
             }
         }
 
         if (pos_col > 0) {
             col_max = std::max(col_max, pos_col);
-            row_cnt = i + 1;
+            row_cnt = row + 1;
         }
     }
-    return { row_cnt,col_max };
+    return {row_cnt, col_max};
 }
 
 void Sheet::PrintValues(std::ostream& output) const {
 
     Size size = GetPrintableSize();
 
-    for (int i = 0; i < size.rows; ++i) {
+    for (int row = 0; row < size.rows; ++row) {
         bool is_first = true;
-        for (int j = 0; j < size.cols; ++j) {
+        for (int col = 0; col < size.cols; ++col) {
             if (!is_first) {
                 output << '\t';
             }
-            if (j < static_cast<int>(table_[i].size()) && GetCell({i,j})) {
+            if (col < static_cast<int>(table_[row].size()) && GetCell({ row, col })) {
                 
-                if (std::holds_alternative<double>(table_[i][j]->GetValue())) {
-                    output << std::get<double>(table_[i][j]->GetValue());
+                if (std::holds_alternative<double>(table_[row][col]->GetValue())) {
+                    output << std::get<double>(table_[row][col]->GetValue());
                 }
-                else if (std::holds_alternative<std::string>(table_[i][j]->GetValue())) {
-                    output << std::get<std::string>(table_[i][j]->GetValue());
+                else if (std::holds_alternative<std::string>(table_[row][col]->GetValue())) {
+                    output << std::get<std::string>(table_[row][col]->GetValue());
                 }
                 else {
-                    output << std::get<FormulaError>(table_[i][j]->GetValue());
+                    output << std::get<FormulaError>(table_[row][col]->GetValue());
                 }
-                
             }
             is_first = false;
         }
@@ -138,18 +128,24 @@ void Sheet::PrintTexts(std::ostream& output) const {
 
     Size size = GetPrintableSize();
 
-    for (int i = 0; i < size.rows; ++i) {
+    for (int row = 0; row < size.rows; ++row) {
         bool is_first = true;
-        for (int j = 0; j < size.cols; ++j) {
+        for (int col = 0; col < size.cols; ++col) {
             if (!is_first) {
                 output << '\t';
             }
-            if (j < static_cast<int>(table_[i].size()) && GetCell({ i,j })) {
-                output << table_[i][j]->GetText();
+            if (col < static_cast<int>(table_[row].size()) && GetCell({row , col})) {
+                output << table_[row][col]->GetText();
             }
             is_first = false;
         }
         output << "\n";
+    }
+}
+
+void Sheet::CheckCellPosition(Position pos) const{
+    if (!pos.IsValid()) {
+        throw InvalidPositionException("invalid cell address");
     }
 }
 
